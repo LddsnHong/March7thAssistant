@@ -2,7 +2,7 @@ from PySide6.QtCore import Qt, QUrl, QObject, QEvent, QPoint
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QWidget, QLabel, QFileDialog, QVBoxLayout, QStackedWidget, QSpacerItem, QScroller, QScrollerProperties, QScrollArea, QFrame, QApplication
 from qfluentwidgets import FluentIcon as FIF
-from qfluentwidgets import SettingCardGroup, PushSettingCard, ScrollArea, InfoBar, PrimaryPushSettingCard
+from qfluentwidgets import SettingCardGroup, PushSettingCard, ScrollArea, InfoBar, InfoBarPosition, PrimaryPushSettingCard
 from app.sub_interfaces.accounts_interface import accounts_interface
 from .common.style_sheet import StyleSheet
 from .components.pivot import SettingPivot
@@ -10,7 +10,7 @@ from .card.comboboxsettingcard1 import ComboBoxSettingCard1
 from .card.comboboxsettingcard2 import ComboBoxSettingCard2, ComboBoxSettingCardUpdateSource, ComboBoxSettingCardLog, ComboBoxSettingCardLanguage
 from .card.switchsettingcard1 import SwitchSettingCard1, StartMarch7thAssistantSwitchSettingCard, SwitchSettingCardTeam, SwitchSettingCardImmersifier, SwitchSettingCardGardenofplenty, SwitchSettingCardEchoofwar, SwitchSettingCardHotkey, SwitchSettingCardCloudGameStatus
 from .card.rangesettingcard1 import RangeSettingCard1
-from .card.pushsettingcard1 import CustomPushSettingCard, PushSettingCardInstance, PushSettingCardInstanceChallengeCount, PushSettingCardNotifyTemplate, PushSettingCardMirrorchyan, PushSettingCardStr, PushSettingCardEval, PushSettingCardDate, PushSettingCardKey, PushSettingCardTeam, PushSettingCardFriends, PushSettingCardTeamWithSwap, PushSettingCardPowerPlan, InstanceTeamSettingCard
+from .card.pushsettingcard1 import CustomPushSettingCard, DualPushSettingCard, PushSettingCardInstance, PushSettingCardInstanceChallengeCount, PushSettingCardNotifyTemplate, PushSettingCardMirrorchyan, PushSettingCardStr, PushSettingCardEval, PushSettingCardDate, PushSettingCardKey, PushSettingCardTeam, PushSettingCardFriends, PushSettingCardTeamWithSwap, PushSettingCardPowerPlan, InstanceTeamSettingCard
 from .card.timepickersettingcard1 import TimePickerSettingCard1
 from .card.expandable_switch_setting_card import ExpandableSwitchSettingCard, ExpandableComboBoxSettingCardUpdateSource, ExpandableComboBoxSettingCard, ExpandableComboBoxSettingCardInstanceType, ExpandableSwitchSettingCardEchoofwar
 from .card.messagebox_custom import MessageBoxEdit
@@ -284,12 +284,28 @@ class SettingInterface(ScrollArea):
             tr("启用培养目标"),
             tr("根据培养目标刷取行迹与遗器副本，如果无法获取培养目标则回退到默认的副本设置")
         )
+        self.buildTargetSchemeCard = ComboBoxSettingCard2(
+            "build_target_scheme",
+            FIF.SEARCH,
+            tr("识别方案"),
+            tr("副本名称识别会进入挑战页读取副本信息；掉落物识别根据列表中的掉落物匹配副本，异常时可尝试切换方案"),
+            texts={
+                tr("副本名称识别"): "instance",
+                tr("掉落物识别"): "drop"
+            }
+        )
         self.buildTargetPlanarOrnamentWeeklyCountCard = RangeSettingCard1(
             "build_target_ornament_weekly_count",
             [0, 7],
             FIF.CALENDAR,
             tr("每周饰品提取次数"),
             tr("目标有足够资源后，执行饰品提取的次数，其余时间执行侵蚀隧洞"),
+        )
+        self.buildTargetUseUserInstanceWhenOnlyErosionAndOrnamentCard = SwitchSettingCard1(
+            FIF.SYNC,
+            tr("仅识别到侵蚀隧洞/饰品提取时使用自定义副本"),
+            tr("开启后，当培养目标仅包含侵蚀隧洞和饰品提取时，清体力将改用你在体力设置中配置的副本"),
+            "build_target_use_user_instance_when_only_erosion_and_ornament"
         )
         self.echoofwarEnableCard = ExpandableSwitchSettingCardEchoofwar(
             "echo_of_war_enable",
@@ -396,6 +412,12 @@ class SettingInterface(ScrollArea):
             tr("存在双倍次数时体力优先「饰品提取」"),
             "activity_planarfissure_enable"
         )
+        self.activityJourneyHighlightsNotificationEnableCard = SwitchSettingCard1(
+            FIF.CALENDAR,
+            tr('活动热点通知'),
+            tr("每次运行时发送带有活动热点截图的通知"),
+            "activity_journey_highlights_notification_enable"
+        )
         self.rewardEnableCard = ExpandableSwitchSettingCard(
             "reward_enable",
             FIF.TRANSPARENT,
@@ -476,6 +498,12 @@ class SettingInterface(ScrollArea):
             tr('启用「货币战争」积分奖励'),
             ""
         )
+        self.currencywarsPresetCard = DualPushSettingCard(
+            tr('提升晋升等级'),
+            tr('提升职级等级'),
+            FIF.SYNC,
+            tr('快捷配置')
+        )
         self.currencywarsRunTimeCard = PushSettingCardDate(
             tr('修改'),
             FIF.DATE_TIME,
@@ -500,19 +528,13 @@ class SettingInterface(ScrollArea):
             FIF.HISTORY,
             tr('职级难度'),
             '',
-            texts={tr('最低职级'): 'lowest', tr('最高职级'): 'highest'}
-        )
-        self.currencywarsFastModeCard = SwitchSettingCard1(
-            FIF.SPEED_HIGH,
-            tr('启用速通模式'),
-            tr("开启后，仅在首领节点尝试装备武器"),
-            "currencywars_fast_mode"
+            texts={tr('最高职级'): 'highest', tr('当前职级'): 'current', tr('最低职级'): 'lowest'}
         )
         self.currencywarsStrategyCard = ExpandableComboBoxSettingCard(
             "currencywars_strategy",
             FIF.BOOK_SHELF,
             tr('货币战争策略'),
-            '',
+            tr('提升晋升等级，推荐在最低职级选择默认策略。提升职级等级，推荐在最高职级选择阿格莱雅策略。'),
             {tr('默认'): 'default', tr('阿格莱雅'): 'aglaea'}
         )
         self.currencywarsRemembranceTrailblazerNameCard = PushSettingCardStr(
@@ -528,12 +550,18 @@ class SettingInterface(ScrollArea):
             tr('根据所选策略，在遇到特定词条或词条组合时允许重开'),
             "currencywars_strategy_restart_on_special_tags"
         )
+        self.currencywarsFastModeCard = SwitchSettingCard1(
+            FIF.SPEED_HIGH,
+            tr('启用速通模式'),
+            tr("开启后，仅在首领节点尝试装备武器，只推荐在最低职级时开启"),
+            "currencywars_fast_mode"
+        )
 
         self.UniverseGroup = SettingCardGroup(tr("差分宇宙"), self.scrollWidget)
         self.weeklyDivergentEnableCard = ExpandableSwitchSettingCard(
             "weekly_divergent_enable",
             FIF.DICTIONARY,
-            tr('启用「差分宇宙」积分奖励【测试版】'),
+            tr('启用「差分宇宙」积分奖励'),
             ""
         )
         self.weeklyDivergentRunTimeCard = PushSettingCardDate(
@@ -549,12 +577,12 @@ class SettingInterface(ScrollArea):
             '',
             texts={tr('常规演算'): 'normal', tr('周期演算'): 'cycle'}
         )
-        self.weeklyDivergentLevelCard = RangeSettingCard1(
+        self.weeklyDivergentLevelCard = ComboBoxSettingCard2(
             "weekly_divergent_level",
-            [1, 6],
             FIF.HISTORY,
-            tr("难度等级（难度6对应常规演算星阶模式）"),
+            tr("难度等级"),
             "",
+            texts={f"{tr('难度')} Ⅰ": 1, f"{tr('难度')} Ⅱ": 2, f"{tr('难度')} Ⅲ": 3, f"{tr('难度')} Ⅳ": 4, f"{tr('难度')} Ⅴ": 5, f"{tr('难度')} Ⅹ{tr('（星阶模式）')}": 6}
         )
         self.weeklyDivergentBonusEnableCard = SwitchSettingCard1(
             FIF.IOT,
@@ -564,8 +592,8 @@ class SettingInterface(ScrollArea):
         )
         self.weeklyDivergentStableModeCard = SwitchSettingCard1(
             FIF.SPEED_OFF,
-            tr('启用稳定模式'),
-            tr("运行若出现问题可尝试开启，适配低性能环境，云游戏默认使用此模式"),
+            tr('启用低性能兼容模式'),
+            tr("建议仅在低性能设备开启，可以提高事件和随意门交互的成功率（云游戏强制使用此模式）"),
             "weekly_divergent_stable_mode"
         )
 
@@ -709,12 +737,19 @@ class SettingInterface(ScrollArea):
             tr("上次运行锄大地的时间"),
             "fight_timestamp"
         )
-        self.fightAllowMapBuyCard = ComboBoxSettingCard2(
-            "fight_allow_map_buy",
+        self.fightMapVersionCard = ComboBoxSettingCard2(
+            "fight_map_version",
             FIF.GLOBE,
-            tr('购买代币与过期邮包'),
+            tr('地图版本'),
             '',
-            texts={tr("不配置"): "不配置", tr("启用"): True, tr("停用"): False}
+            texts={tr("不配置"): "不配置", tr("默认（疾跑）"): "default", tr("黄泉专用"): "HuangQuan"}
+        )
+        self.fightMainMapCard = ComboBoxSettingCard2(
+            "fight_main_map",
+            FIF.GLOBE,
+            tr('优先星球'),
+            '',
+            texts={tr("不配置"): "0", tr("空间站"): "1", tr("雅利洛"): "2", tr("仙舟"): "3", tr("匹诺康尼"): "4", tr("翁法罗斯"): 5, tr("二相乐园"): 6}
         )
         self.fightAllowSnackBuyCard = ComboBoxSettingCard2(
             "fight_allow_snack_buy",
@@ -723,12 +758,12 @@ class SettingInterface(ScrollArea):
             '',
             texts={tr("不配置"): "不配置", tr("启用"): True, tr("停用"): False}
         )
-        self.fightMainMapCard = ComboBoxSettingCard2(
-            "fight_main_map",
+        self.fightAllowMapBuyCard = ComboBoxSettingCard2(
+            "fight_allow_map_buy",
             FIF.GLOBE,
-            tr('优先星球'),
+            tr('购买代币与过期邮包'),
             '',
-            texts={tr("不配置"): "0", tr("空间站"): "1", tr("雅利洛"): "2", tr("仙舟"): "3", tr("匹诺康尼"): "4", tr("翁法罗斯"): 5}
+            texts={tr("不配置"): "不配置", tr("启用"): True, tr("停用"): False}
         )
 
         self.ImmortalGameGroup = SettingCardGroup(tr("逐光捡金"), self.scrollWidget)
@@ -925,7 +960,7 @@ class SettingInterface(ScrollArea):
         self.updateViaLauncherEnableCard = ExpandableSwitchSettingCard(
             "update_via_launcher",
             FIF.UPDATE,
-            tr('通过启动器更新游戏【测试版】'),
+            tr('通过启动器更新游戏'),
             ""
         )
         self.launcherPathCard = PushSettingCard(
@@ -971,7 +1006,8 @@ class SettingInterface(ScrollArea):
             FIF.POWER_BUTTON,
             tr('任务完成后'),
             tr('“退出”指退出游戏，不再建议使用循环模式，请改用日志界面的定时运行功能'),
-            texts={tr('无'): 'None', tr('退出'): 'Exit', tr('关机'): 'Shutdown', tr('睡眠'): 'Sleep', tr('休眠'): 'Hibernate', tr('重启'): 'Restart', tr('注销'): 'Logoff', tr('关闭显示器'): 'TurnOffDisplay', tr('运行脚本'): 'RunScript', tr('循环'): 'Loop'}
+            texts={tr('无'): 'None', tr('退出'): 'Exit', tr('关机'): 'Shutdown', tr('睡眠'): 'Sleep', tr('休眠'): 'Hibernate', tr('重启')
+                      : 'Restart', tr('注销'): 'Logoff', tr('关闭显示器'): 'TurnOffDisplay', tr('运行脚本'): 'RunScript', tr('循环'): 'Loop'}
         )
         self.loopModeCard = ComboBoxSettingCard2(
             "loop_mode",
@@ -1352,11 +1388,19 @@ class SettingInterface(ScrollArea):
             tr("游戏启动前通过修改注册表或本地存储开启自动战斗和二倍速，并在清体力、货币战争和逐光捡金场景中检测并保持自动战斗状态"),
             "auto_battle_detect_enable"
         )
-        self.ocrGpuAccelerationCard = SwitchSettingCard1(
+        self.ocrGpuAccelerationCard = ComboBoxSettingCard2(
+            "ocr_gpu_acceleration",
             FIF.SPEED_HIGH,
-            tr('启用 OCR GPU 加速'),
-            tr("使用 DirectML 加速 OCR 识别，若 GPU 负载高导致 OCR 过慢会自动关闭（仅 Windows 10 Build 18362 及以上支持）"),
-            "ocr_gpu_acceleration"
+            tr('OCR 加速模式'),
+            tr("设置 OCR 引擎与加速后端。自动模式会优先尝试 DirectML，若不可用则回退到 CPU 引擎。"),
+            texts={
+                tr('自动'): 'auto',
+                tr('GPU'): 'gpu',
+                tr('ONNXRuntime（DirectML）'): 'onnx_dml',
+                tr('CPU'): 'cpu',
+                tr('OpenVINO（CPU）'): 'openvino_cpu',
+                tr('ONNXRuntime（CPU）'): 'onnx_cpu',
+            }
         )
         self.autoSetResolutionEnableCard = SwitchSettingCard1(
             FIF.FULL_SCREEN,
@@ -1462,9 +1506,9 @@ class SettingInterface(ScrollArea):
         self.languageCard = ComboBoxSettingCardLanguage(
             "ui_language",
             FIF.LANGUAGE,
-            '界面语言 / 界面語言 / 인터페이스 언어 / UI Language',
-            '切换后即时生效 / 切換後即時生效 / 변경 즉시 적용 / Takes effect immediately',
-            texts={'自动': 'auto', '简体中文': 'zh_CN', '繁體中文': 'zh_TW', '한국어': 'ko_KR', 'English': 'en_US'}
+            '界面语言 / 界面語言 / 日本語 / 인터페이스 언어 / UI Language',
+            '切换后即时生效 / 切換後即時生效 / 切り替え後すぐ適用 / 변경 즉시 적용 / Takes effect immediately',
+            texts={'自动': 'auto', '简体中文': 'zh_CN', '繁體中文': 'zh_TW', '日本語': 'ja_JP', '한국어': 'ko_KR', 'English': 'en_US'}
         )
 
     def __initLayout(self):
@@ -1513,7 +1557,9 @@ class SettingInterface(ScrollArea):
         # self.PowerGroup.addSettingCard(self.maxCalyxPerRoundNumOfAttempts)
         self.PowerGroup.addSettingCard(self.buildTargetEnableCard)
         self.buildTargetEnableCard.addSettingCards([
-            self.buildTargetPlanarOrnamentWeeklyCountCard
+            self.buildTargetSchemeCard,
+            self.buildTargetPlanarOrnamentWeeklyCountCard,
+            self.buildTargetUseUserInstanceWhenOnlyErosionAndOrnamentCard
         ])
         self.PowerGroup.addSettingCard(self.echoofwarEnableCard)
         self.echoofwarEnableCard.addSettingCards([
@@ -1537,7 +1583,8 @@ class SettingInterface(ScrollArea):
             self.activityDailyCheckInEnableCard,
             self.activityGardenOfPlentyEnableCard,
             self.activityRealmOfTheStrangeEnableCard,
-            self.activityPlanarFissureEnableCard
+            self.activityPlanarFissureEnableCard,
+            self.activityJourneyHighlightsNotificationEnableCard
         ])
         self.DailyGroup.addSettingCard(self.rewardEnableCard)
         self.rewardEnableCard.addSettingCards([
@@ -1561,6 +1608,7 @@ class SettingInterface(ScrollArea):
         self.currencywarsEnableCard.addSettingCards([
             self.currencywarsRunTimeCard
         ])
+        self.CurrencywarsGroup.addSettingCard(self.currencywarsPresetCard)
         self.CurrencywarsGroup.addSettingCard(self.currencywarsTypeCard)
         self.CurrencywarsGroup.addSettingCard(self.currencywarsBonusEnableCard)
         self.CurrencywarsGroup.addSettingCard(self.currencywarsRankDifficultyCard)
@@ -1605,9 +1653,10 @@ class SettingInterface(ScrollArea):
         ])
         self.FightGroup.addSettingCard(self.fightTeamEnableCard)
         # self.FightGroup.addSettingCard(self.fightTeamNumberCard)
-        self.FightGroup.addSettingCard(self.fightAllowMapBuyCard)
-        self.FightGroup.addSettingCard(self.fightAllowSnackBuyCard)
+        self.FightGroup.addSettingCard(self.fightMapVersionCard)
         self.FightGroup.addSettingCard(self.fightMainMapCard)
+        self.FightGroup.addSettingCard(self.fightAllowSnackBuyCard)
+        self.FightGroup.addSettingCard(self.fightAllowMapBuyCard)
 
         self.ImmortalGameGroup.addSettingCard(self.forgottenhallEnableCard)
         self.forgottenhallEnableCard.addSettingCards([
@@ -1720,11 +1769,10 @@ class SettingInterface(ScrollArea):
         # self.addSubInterface(self.BorrowGroup, 'BorrowInterface', '支援')
         self.addSubInterface(self.DailyGroup, 'DailyInterface', tr('日常'))
         self.addSubInterface(self.CurrencywarsGroup, 'CurrencywarsInterface', tr('货币战争'))
+        self.addSubInterface(self.UniverseGroup, 'UniverseInterface', tr('差分宇宙'))
         if sys.platform == 'win32':
-            self.addSubInterface(self.UniverseGroup, 'UniverseInterface', tr('差分宇宙'))
             self.addSubInterface(self.FightGroup, 'FightInterface', tr('锄大地'))
         else:
-            self.UniverseGroup.setHidden(True)
             self.FightGroup.setHidden(True)
         self.addSubInterface(self.ImmortalGameGroup, 'ImmortalGameInterface', tr('逐光捡金'))
 
@@ -1771,6 +1819,8 @@ class SettingInterface(ScrollArea):
         self.gamePathCard.clicked.connect(self.__onGamePathCardClicked)
         self.launcherPathCard.clicked.connect(self.__onLauncherPathCardClicked)
         self.ScriptPathCard.clicked.connect(self.__onScriptPathCardClicked)
+        self.currencywarsPresetCard.leftClicked.connect(self.__applyCurrencywarsPromotionPreset)
+        self.currencywarsPresetCard.rightClicked.connect(self.__applyCurrencywarsRankPreset)
         # self.borrowCharacterInfoCard.clicked.connect(self.__openCharacterFolder())
 
         self.testNotifyCard.clicked.connect(lambda: start_task("notify"))
@@ -1988,6 +2038,57 @@ class SettingInterface(ScrollArea):
             return
         cfg.set_value("script_path", script_path)
         self.ScriptPathCard.setContent(script_path)
+
+    def __setComboBoxCardValue(self, card, value):
+        for index in range(card.comboBox.count()):
+            if card.comboBox.itemData(index) != value:
+                continue
+
+            if card.comboBox.currentIndex() != index:
+                card.comboBox.setCurrentIndex(index)
+            else:
+                cfg.set_value(card.configname, value)
+            return
+
+        cfg.set_value(card.configname, value)
+
+    def __setSwitchCardValue(self, card, value):
+        if card.switchButton.isChecked() != value:
+            card.switchButton.setChecked(value)
+            return
+
+        card.setValue(value)
+        cfg.set_value(card.configname, value)
+
+    def __applyCurrencywarsPromotionPreset(self):
+        self.__setComboBoxCardValue(self.currencywarsTypeCard, 'overclock')
+        self.__setComboBoxCardValue(self.currencywarsRankDifficultyCard, 'lowest')
+        self.__setComboBoxCardValue(self.currencywarsStrategyCard, 'default')
+        self.__setSwitchCardValue(self.currencywarsFastModeCard, True)
+        InfoBar.success(
+            title=tr('已应用快捷配置'),
+            content=tr('当前为“提升晋升等级”模式'),
+            orient=Qt.Orientation.Horizontal,
+            isClosable=True,
+            position=InfoBarPosition.TOP,
+            duration=2000,
+            parent=self
+        )
+
+    def __applyCurrencywarsRankPreset(self):
+        self.__setComboBoxCardValue(self.currencywarsTypeCard, 'normal')
+        self.__setComboBoxCardValue(self.currencywarsRankDifficultyCard, 'highest')
+        self.__setComboBoxCardValue(self.currencywarsStrategyCard, 'aglaea')
+        self.__setSwitchCardValue(self.currencywarsFastModeCard, False)
+        InfoBar.success(
+            title=tr('已应用快捷配置'),
+            content=tr('当前为“提升职级等级”模式'),
+            orient=Qt.Orientation.Horizontal,
+            isClosable=True,
+            position=InfoBarPosition.TOP,
+            duration=2000,
+            parent=self
+        )
 
     def __onExpandableCardStateChanged(self, is_expanding: bool):
         """可展开卡片状态改变时，调整 stackedWidget 高度以包含子卡片"""

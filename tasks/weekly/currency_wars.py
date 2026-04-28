@@ -30,6 +30,7 @@ class CurrencyWars:
         self.result: Optional[bool] = None  # 对局结果
         self.need_exit: bool = False  # 是否需要退出
         self.need_restart: bool = False  # 是否重开
+        self._stage_unchanged_count: int = 0  # 连续未发生阶段变化计数
         self.forward_characters: list[CurrencyWarsCharacter] = []  # 存储前台角色
         self.backward_characters: list[CurrencyWarsCharacter] = []  # 存储后台角色
         self.prepare_characters: list[CurrencyWarsCharacter] = []  # 存储备战席角色
@@ -298,7 +299,10 @@ class CurrencyWars:
         # 避免低性能设备加载过慢
         time.sleep(6)  # 等待界面加载
 
-        if cfg.currencywars_rank_difficulty == "highest":
+        if cfg.currencywars_rank_difficulty == "current":
+            log.info("保持当前职级，不调整关卡难度")
+            return True
+        elif cfg.currencywars_rank_difficulty == "highest":
             for _ in range(10):
                 if auto.click_element("返回最高职级", "text", crop=(1326 / 1920, 947 / 1080, 137 / 1920, 37 / 1080)):
                     time.sleep(2)
@@ -330,6 +334,7 @@ class CurrencyWars:
         self.current_level = 0  # 重置当前可部署角色等级
         self.current_stage = "0-0"  # 重置当前关卡阶段
         self.need_exit = False  # 是否需要退出
+        self._stage_unchanged_count = 0  # 重置阶段未变化计数
         self.need_restart = False  # 是否需要重开
         self.forward_characters = []  # 重置前台角色
         self.backward_characters = []  # 重置后台角色
@@ -387,6 +392,8 @@ class CurrencyWars:
                 log.info(f"本次货币战争用时：{minutes} 分钟 {seconds} 秒")
                 return self.result if self.result is not None else False
 
+            time.sleep(2)
+
     def check_main_screen(self):
         """
         检查并处理主界面逻辑
@@ -401,11 +408,11 @@ class CurrencyWars:
                 if auto.click_element('收起', 'text', None, 1, crop=(1593.0 / 1920, 959.0 / 1080, 60.0 / 1920, 43.0 / 1080)):
                     time.sleep(2)
                 self.check_festival_star_popup()
+                self.identify_current_stage()
                 if self.need_exit:
                     self.give_up_and_settle()
                     self.need_exit = False
                     return
-                self.identify_current_stage()
                 self.collect_reward()
                 self.check_box()
                 self.check_character_status()
@@ -480,7 +487,7 @@ class CurrencyWars:
                 self.sell_characters()
                 if not (cfg.currencywars_strategy == "aglaea" and not self.allow_equip_weapons):
                     self.equip_weapons()
-                auto.click_element('出战', 'text', None, 10, crop=(1744.0 / 1920, 737.0 / 1080, 165.0 / 1920, 71.0 / 1080))
+                auto.click_element(('出战', '跳过'), 'text', None, 10, crop=(1740 / 1920, 709 / 1080, 177 / 1920, 80 / 1080), include=True)
                 time.sleep(2)
                 if auto.click_element("本局不再提示", "text", crop=(905 / 1920, 571 / 1080, 171 / 1920, 50 / 1080)):
                     time.sleep(1)
@@ -504,6 +511,7 @@ class CurrencyWars:
         aglaea3_img = "./assets/images/share/aglaea/aglaea3.png"
         remembrance_trailblazer_name = self.get_remembrance_trailblazer_name()
         # 打开商店
+        log.info("打开商店购买角色")
         auto.click_element(shop_button_crop, "crop")
         time.sleep(2)
         money = self.check_money()
@@ -577,6 +585,7 @@ class CurrencyWars:
             else:
                 break
         # 关闭商店
+        log.info("关闭商店")
         auto.click_element(shop_button_crop, "crop")
         time.sleep(2)
         if buy_anything:
@@ -589,6 +598,7 @@ class CurrencyWars:
         shop_crop = (344 / 1920, 19 / 1080, 1370 / 1920, 336 / 1080)
         remembrance_trailblazer_name = self.get_remembrance_trailblazer_name()
         # 打开商店
+        log.info("打开商店购买角色")
         auto.click_element(shop_button_crop, "crop")
         time.sleep(2)
         money = self.check_money()
@@ -677,6 +687,7 @@ class CurrencyWars:
                     break
 
         # 关闭商店
+        log.info("关闭商店")
         auto.click_element(shop_button_crop, "crop")
         time.sleep(2)
         if buy_anything:
@@ -745,7 +756,7 @@ class CurrencyWars:
             for _ in range(3):
                 if self.shoe_count < 4:
                     if result := auto.find_element(boots_img, "image", 0.9, crop=equip_crop):
-                        if self.shoe_count in (0, 2):
+                        if self.shoe_count in (0, 1, 2):
                             log.info("检测到反重力皮靴，尝试装备反重力皮靴")
                             try_equip(result, aglaea_position)
                             self.shoe_count += 2
@@ -779,12 +790,14 @@ class CurrencyWars:
         for _ in range(4):
             if self.shoe_count < 4:
                 if result := auto.find_element(shoe_img, "image", 0.9, crop=equip_crop):
+                    log.info("检测到轮滑鞋，尝试装备轮滑鞋")
                     try_equip(result, aglaea_position)
                     self.shoe_count += 1
                 else:
                     break
 
         if result := auto.find_element(propeller_img, "image", 0.9, crop=equip_crop):
+            log.info("检测到螺旋桨，尝试装备螺旋桨")
             try_equip(result, aglaea_position)
             self.propeller_count = 1
 
@@ -795,9 +808,16 @@ class CurrencyWars:
         """
         放弃并结算：按ESC键并点击放弃并结算按钮
         """
+        log.info("尝试放弃并结算当前对局")
         auto.press_key('esc')
         time.sleep(2)
-        auto.click_element('放弃并结算', 'text', include=True)
+        if not auto.click_element('放弃并结算', 'text', include=True):
+            log.warning("放弃并结算失败，等待一段时间后重试")
+            time.sleep(5)
+            auto.press_key('esc')
+            if not auto.click_element('放弃并结算', 'text', include=True):
+                log.error("放弃并结算失败，请检查游戏状态")
+                raise RuntimeError("放弃并结算失败")
 
     def sell_characters(self):
         """
@@ -939,82 +959,100 @@ class CurrencyWars:
         for item in all_chars:
             log.debug(f"角色 {item['c'].name}: 费用={item['c'].money}, 站位={self.pos_name_localization.get(item['c'].pos, item['c'].pos)}, 区域={self.zone_name_localization[item['zone']]}, 索引={item['idx']}")
 
+        source_chars = all_chars
         forward_slots = len(self.forward_characters)
         backward_slots = len(self.backward_characters)
 
-        # 先从可前台的角色里选出最多 min(forward_slots, limit) 个：按 money 降序，金额相同 pos 优先级 forward > all，去重按名字
-        forward_candidates = [item for item in all_chars if item["c"].pos in ("forward", "all")]
-        forward_candidates.sort(key=lambda x: (-x["c"].money, 0 if x["c"].pos == "forward" else 1))
-        top_forward: list[dict] = []
-        top_forward_names: set[str] = set()
-        duplicates_forward: list[dict] = []
-        for item in forward_candidates:
+        def _get_effective_pos(item, forced_forward_names=None):
             name = item["c"].name
-            if name and name not in top_forward_names and len(top_forward) < min(forward_slots, limit):
-                top_forward.append(item)
-                top_forward_names.add(name)
-            elif name in top_forward_names:
-                duplicates_forward.append(item)
+            if forced_forward_names and name in forced_forward_names:
+                return "forward"
+            return item["c"].pos
 
-        # 剩余角色按 money 降序，金额相同 pos 优先级 forward > backward > all，同样去重，重复的放末尾
-        pos_priority = {"forward": 0, "backward": 1, "all": 2}
-        remaining_pool = [item for item in all_chars if item not in top_forward and item not in duplicates_forward]
-        remaining_pool.sort(key=lambda x: (-x["c"].money, pos_priority.get(x["c"].pos, 3)))
+        def _build_assignment(forced_forward_names=None):
+            forced_forward_names = forced_forward_names or set()
 
-        remaining_unique: list[dict] = []
-        remaining_names: set[str] = set()
-        duplicates_rest: list[dict] = []
-        for item in remaining_pool:
-            name = item["c"].name
-            if name and name not in top_forward_names and name not in remaining_names:
-                remaining_unique.append(item)
-                remaining_names.add(name)
-            else:
-                duplicates_rest.append(item)
+            forward_candidates = [item for item in source_chars if _get_effective_pos(item, forced_forward_names) in ("forward", "all")]
+            forward_candidates.sort(key=lambda x: (-x["c"].money, 0 if _get_effective_pos(x, forced_forward_names) == "forward" else 1))
+            top_forward: list[dict] = []
+            top_forward_names: set[str] = set()
+            duplicates_forward: list[dict] = []
+            for item in forward_candidates:
+                name = item["c"].name
+                if name and name not in top_forward_names and len(top_forward) < min(forward_slots, limit):
+                    top_forward.append(item)
+                    top_forward_names.add(name)
+                elif name in top_forward_names:
+                    duplicates_forward.append(item)
 
-        # 最终排序：前台唯一 -> 其余唯一 -> 所有重复
-        all_chars = top_forward + remaining_unique + duplicates_forward + duplicates_rest
+            pos_priority = {"forward": 0, "backward": 1, "all": 2}
+            remaining_pool = [item for item in source_chars if item not in top_forward and item not in duplicates_forward]
+            remaining_pool.sort(key=lambda x: (-x["c"].money, pos_priority.get(_get_effective_pos(x, forced_forward_names), 3)))
 
-        log.debug("按投资金额排序后的角色信息：")
-        for item in all_chars:
-            log.debug(f"角色 {item['c'].name}: 费用={item['c'].money}, 站位={self.pos_name_localization.get(item['c'].pos, item['c'].pos)}, 区域={self.zone_name_localization[item['zone']]}, 索引={item['idx']}")
+            remaining_unique: list[dict] = []
+            remaining_names: set[str] = set()
+            duplicates_rest: list[dict] = []
+            for item in remaining_pool:
+                name = item["c"].name
+                if name and name not in top_forward_names and name not in remaining_names:
+                    remaining_unique.append(item)
+                    remaining_names.add(name)
+                else:
+                    duplicates_rest.append(item)
 
-        # 按规则分配 forward/backward/prepare
-        used = 0  # forward + backward 已使用数量
+            ordered_chars = top_forward + remaining_unique + duplicates_forward + duplicates_rest
 
-        assigned = {"forward": [], "backward": [], "prepare": []}
-        used_names = set()  # forward/backward 已分配的名字
+            log.debug("按投资金额排序后的角色信息：")
+            for item in ordered_chars:
+                effective_pos = _get_effective_pos(item, forced_forward_names)
+                log.debug(f"角色 {item['c'].name}: 费用={item['c'].money}, 站位={self.pos_name_localization.get(effective_pos, effective_pos)}, 区域={self.zone_name_localization[item['zone']]}, 索引={item['idx']}")
 
-        for item in all_chars:
-            c = item["c"]
-            name = c.name
+            used = 0
+            assigned = {"forward": [], "backward": [], "prepare": []}
+            used_names = set()
 
-            # forward
-            if ((c.pos in ("forward", "all") or len(top_forward) < min(forward_slots, limit)) and
-                len(assigned["forward"]) < forward_slots and
-                used < limit and
-                    name not in used_names):
-                assigned["forward"].append(item)
-                used_names.add(name)
-                used += 1
-                continue
+            for item in ordered_chars:
+                name = item["c"].name
+                effective_pos = _get_effective_pos(item, forced_forward_names)
 
-            # backward
-            if (c.pos in ("backward", "all") and
-                len(assigned["backward"]) < backward_slots and
-                used < limit and
-                    name not in used_names):
-                assigned["backward"].append(item)
-                used_names.add(name)
-                used += 1
-                continue
+                if ((effective_pos in ("forward", "all") or len(top_forward) < min(forward_slots, limit)) and
+                    len(assigned["forward"]) < forward_slots and
+                    used < limit and
+                        name not in used_names):
+                    assigned["forward"].append(item)
+                    used_names.add(name)
+                    used += 1
+                    continue
 
-            assigned["prepare"].append(item)
+                if (effective_pos in ("backward", "all") and
+                    len(assigned["backward"]) < backward_slots and
+                    used < limit and
+                        name not in used_names):
+                    assigned["backward"].append(item)
+                    used_names.add(name)
+                    used += 1
+                    continue
 
-        log.debug(
-            f"计算区域结果: {self.zone_name_localization['forward']}={len(assigned['forward'])}, {self.zone_name_localization['backward']}={len(assigned['backward'])}, {self.zone_name_localization['prepare']}={len(assigned['prepare'])}, total used={used}/{limit}")
+                assigned["prepare"].append(item)
 
-        # 无效优化，前台角色放后台不会自动使用技能，保持队伍中有角色空缺即可
+            log.debug(
+                f"计算区域结果: {self.zone_name_localization['forward']}={len(assigned['forward'])}, {self.zone_name_localization['backward']}={len(assigned['backward'])}, {self.zone_name_localization['prepare']}={len(assigned['prepare'])}, total used={used}/{limit}")
+            return ordered_chars, assigned, used
+
+        all_chars, assigned, used = _build_assignment()
+
+        if cfg.currencywars_strategy == "aglaea":
+            deployed_names = {
+                item["c"].name
+                for zone in ("forward", "backward")
+                for item in assigned[zone]
+                if item["c"].name
+            }
+            if "风堇" in deployed_names and "藿藿" not in deployed_names:
+                # 阿格莱雅策略下检测到风堇已上场但藿藿未上场，强制将风堇视为前台角色后重新排序
+                all_chars, assigned, used = _build_assignment({"风堇"})
+
+        # 无效优化，前台角色放后台不会自动使用技能，保持队伍中有角色空缺即可（好像能凑羁绊 也未必是无效优化，但是我懒得改了^_^）
         # # 补充逻辑：如果 forward 已满且 used < limit，从 prepare 移动角色到 backward
         # if len(assigned['forward']) == min(forward_slots, limit) and used < limit:
         #     log.debug(f"前台已满({len(assigned['forward'])}个)，但总使用量({used})未达上限({limit})，尝试从备战席补充到后台")
@@ -1295,7 +1333,10 @@ class CurrencyWars:
         log.info(f"已移动角色: {list2[i2].name}({self.zone_name_localization[z1]}({i1})) <-> {list1[i1].name}({self.zone_name_localization[z2]}({i2}))")
         self._log_character_status()
 
-        # 检查可能弹出的特殊选择框
+        # 特殊会弹窗角色
+        star_characters = {"星期日", "花火", "大丽花", "知更鸟", "黑天鹅", "银狼LV.999"}
+        if list2[i2].name in star_characters or list1[i1].name in star_characters:
+            time.sleep(4)  # 等待选择框出现
         self.check_festival_star_popup()
         return True
 
@@ -1332,6 +1373,13 @@ class CurrencyWars:
                             break
                 auto.click_element("确认选择", "text", crop=(1329.0 / 1920, 572.0 / 1080, 332.0 / 1920, 55.0 / 1080))
                 time.sleep(0.5)
+            elif "我来当策划" in result:
+                log.info("检测到我来当策划")
+                choose_crop = (564 / 1920, 191 / 1080, 449 / 1920, 225 / 1080)
+                auto.click_element(choose_crop, "crop")
+                time.sleep(0.5)
+                auto.click_element("确认选择", "text", crop=(1424 / 1920, 573 / 1080, 134 / 1920, 51 / 1080))
+                time.sleep(0.5)
 
     def identify_current_stage(self):
         """
@@ -1341,7 +1389,15 @@ class CurrencyWars:
         stage_text = auto.get_single_line_text(crop=stage_crop)
         if stage_text and re.match(r"^\d-\d$", stage_text):
             log.hr(f"当前阶段：{stage_text}", 2)
+            if stage_text == self.current_stage:
+                self._stage_unchanged_count += 1
+                log.debug(f"当前阶段连续未变化次数：{self._stage_unchanged_count}")
+            else:
+                self._stage_unchanged_count = 0
             self.current_stage = stage_text
+            if self._stage_unchanged_count >= 5:
+                log.warning("检测到当前阶段连续5次未发生变化，判定为卡死")
+                self.need_exit = True
         else:
             log.warning("未能识别当前货币战争阶段")
 
@@ -1349,6 +1405,14 @@ class CurrencyWars:
         """
         收集奖励：模拟连续滑动，经过所有奖励图标
         """
+
+        # 通过颜色快速判断一下是否存在奖励可领取（避免每次都滑动一遍）
+        if auto.is_rgb_ratio_above_threshold((1306 / 1920, 154 / 1080, 285 / 1920, 329 / 1080), (66, 72, 185), 0.8, tolerance=0.085):
+            log.info("没有检测到可领取的奖励，跳过滑动")
+            return
+        else:
+            log.info("检测到存在可领取的奖励，开始滑动收集")
+
         reward_pos = [
             (1564 / 1920, 138 / 1080, 26 / 1920, 20 / 1080),
             (1289 / 1920, 138 / 1080, 26 / 1920, 20 / 1080),
@@ -1428,6 +1492,17 @@ class CurrencyWars:
 
         auto.mouse_up()
 
+        # 检查是否弹出 “我来当策划”
+        result = auto.get_single_line_text(crop=(972 / 1920, 57 / 1080, 151 / 1920, 44 / 1080))
+        if result:
+            if "我来当策划" in result:
+                log.info("检测到我来当策划")
+                choose_crop = (564 / 1920, 191 / 1080, 449 / 1920, 225 / 1080)
+                auto.click_element(choose_crop, "crop")
+                time.sleep(0.5)
+                auto.click_element("确认选择", "text", crop=(1424 / 1920, 573 / 1080, 134 / 1920, 51 / 1080))
+                time.sleep(0.5)
+
     # 识别等级
     def get_level(self):
         """
@@ -1465,23 +1540,28 @@ class CurrencyWars:
 
             money = self.check_money()
             if money >= 4:
+                required_buy_times = None
                 if cfg.currencywars_type == "normal":
                     need_exp_crop = (235 / 1920, 930 / 1080, 124 / 1920, 38 / 1080)
                     need_exp_text = auto.get_single_line_text(crop=need_exp_crop)
                     if need_exp_text and re.match(r"^\d+/\d+$", need_exp_text):
                         current_exp, total_exp = map(int, need_exp_text.split('/'))
                         need_exp = total_exp - current_exp
-                        if money < need_exp:
-                            log.info(f"当前经验 {current_exp}，距离升级还需 {need_exp} 经验，货币数量 {money} 不足以购买到升级")
+                        # 每次购买消耗4货币并提供4经验
+                        required_buy_times = (need_exp + 3) // 4
+                        affordable_buy_times = money // 4
+                        if affordable_buy_times < required_buy_times:
+                            log.info(
+                                f"当前经验 {current_exp}，距离升级还需 {need_exp} 经验，"
+                                f"需购买 {required_buy_times} 次(可购买 {affordable_buy_times} 次)，货币数量 {money} 不足以购买到升级"
+                            )
                             break
 
-                times = min(money // 4, 10)
-                if cfg.currencywars_strategy == "aglaea" and self.current_level == 8:
-                    times = 1
+                times = required_buy_times if required_buy_times is not None else min(money // 4, 10)
                 log.info(f"连续购买经验 {times} 次")
                 for _ in range(times):
                     auto.press_key("f")
-                    time.sleep(0.1)
+                    time.sleep(0.3)
                 time.sleep(2)
 
                 # 检查货币是否有变化
@@ -1559,12 +1639,20 @@ class CurrencyWars:
                 log.error("开启宝箱操作超时，退出循环")
                 break
 
+            log.info("检测到开启按钮，尝试点击")
             auto.click_element_with_pos(res, action="down")
             time.sleep(0.2)
             auto.mouse_up()
-            time.sleep(2)
-            if auto.find_element(('武装箱', '星徽秘典'), "text", None, crop=(1012.0 / 1920, 27.0 / 1080, 173.0 / 1920, 56.0 / 1080), include=True):
-                if cfg.currencywars_strategy == "aglaea" and self.shoe_count < 4 and auto.click_element("轮滑鞋", "text", crop=(535 / 1920, 268 / 1080, 1129 / 1920, 45 / 1080)):
+            time.sleep(4)
+
+            success = False
+            if auto.find_element(('武装箱', '星徽秘典', '阿哈'), "text", None, crop=(1012.0 / 1920, 27.0 / 1080, 173.0 / 1920, 56.0 / 1080), include=True):
+                if auto.matched_text == "阿哈":
+                    log.info(f"检测到为「阿哈」选择装备，尝试点击")
+                else:
+                    log.info(f"检测到{auto.matched_text}，尝试点击")
+                success = True
+                if cfg.currencywars_strategy == "aglaea" and self.shoe_count < 4 and auto.click_element("轮滑鞋", "text", crop=(535 / 1920, 268 / 1080, 1129 / 1920, 45 / 1080), include=True):
                     log.info("检测到轮滑鞋选项，尝试点击")
                 else:
                     pos = (533.0 / 1920, 135.0 / 1080, 258.0 / 1920, 181.0 / 1080)
@@ -1572,6 +1660,8 @@ class CurrencyWars:
                 time.sleep(2)
             # 聘用书坐标尚未经过测试
             if auto.find_element("聘用书", "text", None, crop=(923.0 / 1920, 21.0 / 1080, 168.0 / 1920, 74.0 / 1080), include=True):
+                log.info("检测到聘用书选项，尝试点击")
+                success = True
                 if cfg.currencywars_strategy == "aglaea":
                     remembrance_trailblazer_name = self.get_remembrance_trailblazer_name()
                     preferred_characters = ["瓦尔特", "昔涟"]
@@ -1579,15 +1669,28 @@ class CurrencyWars:
                         preferred_characters.append(remembrance_trailblazer_name)
                     preferred_characters.extend(["星期日", "符玄", "银狼", "花火", "风堇", "藿藿", "缇宝"])
                     if auto.click_element(tuple(preferred_characters), "text", crop=(501 / 1920, 362 / 1080, 1047 / 1920, 42 / 1080)):
-                        log.info(f"检测到{auto.matched_text}选项，尝试点击")
+                        log.info(f"检测到{auto.matched_text}选项，优先点击")
+                    else:
+                        pos = (486.0 / 1920, 159.0 / 1080, 240.0 / 1920, 269.0 / 1080)
+                        auto.click_element(pos, "crop")
                 else:
                     pos = (486.0 / 1920, 159.0 / 1080, 240.0 / 1920, 269.0 / 1080)
                     auto.click_element(pos, "crop")
                 time.sleep(2)
             if auto.find_element("专家邀请函", "text", None, crop=(949 / 1920, 27 / 1080, 153 / 1920, 56 / 1080), include=True):
-                pos = (769 / 1920, 134 / 1080, 245 / 1920, 276 / 1080)
-                auto.click_element(pos, "crop")
+                log.info("检测到专家邀请函选项，尝试点击")
+                success = True
+                if cfg.currencywars_strategy == "aglaea" and auto.click_element("银狼", "text", crop=(366 / 1920, 363 / 1080, 1318 / 1920, 40 / 1080)):
+                    pass
+                else:
+                    # 4个
+                    auto.click_element((769 / 1920, 134 / 1080, 245 / 1920, 276 / 1080), "crop")
+                    # 5个
+                    auto.click_element((900 / 1920, 135 / 1080, 249 / 1920, 275 / 1080), "crop")
                 time.sleep(2)
+            if not success:
+                log.warning("未检测到可点击的选项")
+                continue
             res = auto.find_element("开启", "text", None, crop=(376.0 / 1920, 839.0 / 1080, 1125.0 / 1920, 148.0 / 1080), include=True)
 
     def check_character_status(self):
@@ -1666,10 +1769,11 @@ class CurrencyWars:
                     money = "10"
                     self.has_aglaea = True
                 elif name == "风堇":
-                    money = "9"
+                    money = "8"
+                    cpos = "backward"
                     self.has_hyacine = True
                 elif name == "缇宝":
-                    money = "8"
+                    money = "9"
                     cpos = "backward"
                     self.has_tribbie = True
                 elif name == "藿藿":
@@ -1679,12 +1783,15 @@ class CurrencyWars:
                 elif name == "星期日":
                     self.has_sunday = True
                 elif remembrance_trailblazer_name and name == remembrance_trailblazer_name:
+                    cpos = "forward"
                     self.has_remembrance_trailblazer = True
                 elif name == "符玄":
                     self.has_fuxuan = True
                 elif name == "银狼":
+                    money = "2"
                     self.has_silverwolf = True
                 elif name == "花火":
+                    cpos = "all"
                     self.has_sparkle = True
                 elif name == "瓦尔特":
                     self.has_welt = True
@@ -1697,6 +1804,9 @@ class CurrencyWars:
 
             self.click_origin()
             return character
+        else:
+            # 部分用户开拓者名字非中英语，导致 OCR 失败，但是角色信息界面仍然打开，需要点击空白处关闭界面否则特定情况下会影响后续操作（比如点进开拓者角色界面）
+            self.click_origin()
         return CurrencyWarsCharacter(None, None)
 
     def click_origin(self):
@@ -1719,18 +1829,46 @@ class CurrencyWars:
         """
         检查并点击继续类别的按钮
         """
-        if auto.click_element(("点击空白处继续", "下一步", "继续挑战", "前往结算", "下一页", "确认选择"), 'text', None, include=True):
+        if result := auto.find_element(("点击空白处继续", "下一步", "继续挑战", "前往结算", "下一页", "确认选择"), 'text', None, include=True):
             log.info(f"检测到{auto.matched_text}按钮，尝试点击")
+
             if auto.matched_text == "下一页":
                 self._check_battle_result()
-
-            if cfg.currencywars_strategy == "aglaea" and cfg.currencywars_strategy_restart_on_special_tags:
+                auto.click_element_with_pos(result)
+            elif cfg.currencywars_strategy == "aglaea" and cfg.currencywars_strategy_restart_on_special_tags:
                 if auto.matched_text == "下一步":
-                    self._check_boss_tag()
+                    time.sleep(2)  # 等待BOSS词条加载完成
+                    if auto.click_element("下一步", 'text', None, include=True):
+                        self._check_boss_tag()
+                else:
+                    auto.click_element_with_pos(result)
+            else:
+                auto.click_element_with_pos(result)
 
     def _check_boss_tag(self):
-        black_tags = ["正当防卫", "沉重脚步", "永久创伤", "能量逃逸", "忍无可忍", "同步行动"]
-        black2_tags = ["决战在即", "战个痛快", "免死金牌", "榜样激励"]
+        # 沉重脚步：敌人攻击我方队员后，使受到攻击的我方队员行动延后8%。
+        # 能量逃逸：敌人受到攻击后，使攻击者能量降低4点，如果能量达到上限则不降低。
+        # 忍无可忍：敌人受到7次攻击后，行动提前100%。
+        # 同步行动：我方小队获得行动提前效果时，随机使一名精英/首领敌人行动提前20%。
+        # 决战在即：首领节点的倒计时减少30，但遭遇节点的倒计时增加20。
+        # 战个痛快：战斗节点的倒计时减少30，但首领节点的倒计时增加20。
+        # 正当防卫：敌人受到我方前台攻击时，对施放攻击的我方目标造成等同于120%攻击力的伤害，该伤害无法消灭我方目标。
+        # 免死金牌：敌人受到攻击期间，若生命值百分比小于1%，使当前生命值变为生命上限的10%，并在本次攻击内不会降低至该值以下，每名敌人只能触发1次该效果。
+        # 榜样激励：伤害统计排名第一的队员造成的伤害为原伤害的75%，其他队员造成的伤害为原伤害的110%。
+        # 永久创伤：我方小队生命值降低时，会减少等同于生命值降低值20%的生命上限，最多降低生命上限的60%。
+        # 变宝为废：每个位面开始时，首次合成的进阶装备会有50%的概率变成垃圾袋。
+        # 额外打击：我方队员每有1个空缺装备栏，受到敌人攻击后，额外受到本次攻击伤害8%的真实伤害。
+        black_tags = ["沉重脚步", "能量逃逸", "忍无可忍", "同步行动", "决战在即", "战个痛快", "正当防卫", "免死金牌", "榜样激励", "永久创伤", "变宝为废", "额外打击"]
+
+        # 雷之熄火：进入战斗时，我方小队中的雷属性目标造成伤害时只能造成1点伤害，施放4次攻击后解除。
+        # 一鼓作气：敌人首次行动后，行动提前100%。
+        # 应激反应：敌人的生命值百分比降低至小于50%时，行动提前100%。
+        # 灼热轰炸：进入战斗时，我方前台在场的第一位角色受到攻击的概率大幅提高。敌人施放攻击后，使攻击目标陷入灼烧状态，回合开始时受到等同 于生命上限12%的火属性持续伤害，持续3回合，该灼烧状态可叠加。
+        # 忽快忽慢：战斗开始时，速度增幅最高的两名我方角色降低40%速度增幅，最低的两名我方角色提高25%速度增幅。
+        # 成长的烦恼：在你达到8级后，每次购买经验会损失1金币。
+        # 极速制冷：我方前台回合结束时，本回合中每消耗1个战技点，就有15%固定概率陷入冻结状态，持续1回合。
+        # 坠入陷阱：战斗开始时，我方前台有40%基础概率陷入禁锢、纠缠状态，使其行动延后20%，持续1回合。
+        black2_tags = ["雷之熄火", "一鼓作气", "应激反应", "灼热轰炸", "忽快忽慢", "成长的烦恼", "极速制冷", "坠入陷阱"]
 
         # black_tags 直接重开，black2_tags 超过1个才重开
         black2_count = 0
@@ -1821,6 +1959,37 @@ class CurrencyWars:
             ]
             has_choose = False
 
+            # 投资环境：
+            # 昼之半神概念股：开局时获得【昼之半神】角色和初始简易装备，【昼之半神】角色的刷新概率提高。
+            # 能量概念股：开局时获得【能量】角色和初始简易装备，【能量】角色的刷新概率提高。
+            # 火药味：开局时获得2个简易武装箱。
+            # 过剩经费：补给阶段中，角色会携带两件装备。
+            # 红钻贵族：开局时拥有【红钻】和一个【简易武装箱】。
+            # 蓝钻贵族：开局时拥有【蓝钻】和一个【简易武装箱】。
+            # 增发货币：第一/二/三位面开始时，获得一个6/8/12金币的晶矿。
+            # 成功经验：在你升到8级后，进入接下来3个节点时，获得12经验。
+            # 二手市场：商店刷新20次后，获得30金币和【员工投影仪】。
+            # 昼之半神邀请：获得一个【昼之半神星徽】
+            # 量子同频邀请：获得一个【量子同频星徽】
+            # 能量邀请：获得一个【能量星徽】
+            # 特权阶级：第二位面开始时，获得1个特权武装箱。
+
+            # 投资策略：
+            # 公司军火更新：每次进入新节点时，你物品栏里的装备变为同品质的其他装备。balabala
+            # 超光速提拔：战斗开始时：1个随机的1费角色在这场战斗中升为4星，并获得5%前/后台强度。
+            # 自由市场：每当你将要获得一件简易装备时，改为获得1个【简易武装箱】。获得1个随机的简易装备。
+            # 优势火力论：获得1个【特权赋予卡】和1个【简易武装箱】。
+            # 淘金客：你每次消耗金币刷新商店，都会获得2经验值。
+
+            if cfg.currencywars_strategy == "aglaea":
+                white_list = ('昼之半神概念股', '能量概念股', '火药味', '过剩经费', '红钻贵族', '蓝钻贵族', '增发货币', '成功经验', '二手市场', '昼之半神邀请', '量子同频邀请', '能量邀请', '特权阶级')
+                white_list += ('公司军火更新', '超光速提拔', '自由市场', '优势火力论', '淘金客')
+                for pos in button_positions:
+                    if auto.click_element(white_list, 'text', crop=pos, include=True):
+                        log.info(f"检测到{auto.matched_text}选项，尝试点击")
+                        has_choose = True
+                        break
+
             # 不方便判断的选项，暂时跳过处理
             # 深井角斗场：本局首次达成5连胜时，获得【财富宝钻】。
             # 佩佩客串：进入5个节点后，阿兰接走佩佩们并留下所有装备。
@@ -1829,19 +1998,19 @@ class CurrencyWars:
             # 降本增效：出售场上和备战席的所有角色
             # 大裁员：出售场上和备战席的所有角色
             # 人力重组：移除场上和备战席的所有角色
+            # 全员晋升：场上的所有角色会永久升级成比自身高1费的随机角色(最大5费)。获得2个【拆装扳手】。
             # 节省工位：在接下来3个节点只有3个备战席位置
             # 奋斗协议：购买经验值消耗7点小队生命值而非金币
             # 专家研讨会：获得1个【专家邀请函】和1个【简易武装箱】。
+            # 快请专家：获得X个【专家邀请函】balabala
+            # 英雄登场：获得1个2星5费角色，19个节点后才能将其上场。战斗完胜后，上场节点额外提前1点。
+            # 命运礼物：立刻获得一个【惊喜盒】，倒计时12个节点后礼盒打开，战斗完胜后，倒计时额外减少1点。
+            # 独家代言：从3件进阶装备中选择一件获取。本局游戏中，你获得组成该装备的简易装备时，改为获得该进阶装备。
+            # 全都要：本局游戏中，补给阶段的可选项减少2个。补给阶段选择后，额外获得所有未选择的角色及装备。
+            # 广聚天下英才：获得所有2费角色各一个
+            # 阿哈大悦：【目前 Wiki 都还没更新这个】
 
-            if cfg.currencywars_strategy == "aglaea":
-                white_list = ('能量概念股', '火药味', '成功经验', '公司军火更新', '超光速提拔', '自由市场', '优势火力论', '淘金客')
-                for pos in button_positions:
-                    if auto.click_element(white_list, 'text', crop=pos, include=True):
-                        log.info(f"检测到{auto.matched_text}选项，尝试点击")
-                        has_choose = True
-                        break
-
-            black_list = ('深井角斗场', '佩佩客串', '钻石商人', '现金为王', '降本增效', '大裁员', '人力重组', '全员晋升', '节省工位', '奋斗协议', '专家研讨会', '快请专家', '英雄登场', '命运礼物', '独家代言')
+            black_list = ('深井角斗场', '佩佩客串', '钻石商人', '现金为王', '降本增效', '大裁员', '人力重组', '全员晋升', '节省工位', '奋斗协议', '专家研讨会', '快请专家', '英雄登场', '命运礼物', '独家代言', '全都要', '广聚天下英才', '阿哈大悦')
             if not has_choose:
                 for pos in button_positions:
                     if auto.find_element(black_list, 'text', crop=pos, include=True):
@@ -1866,7 +2035,7 @@ class CurrencyWars:
 
             if not has_choose:
                 log.error("所有选项均不可选，尝试退出")
-                auto.click_element(button_positions_click[0], 'crop')
+                auto.click_element(button_positions_click[1], 'crop')
                 self.need_exit = True
             time.sleep(1)
             auto.click_element('确认', 'text', None, 10, crop=(738.0 / 1920, 927.0 / 1080, 457.0 / 1920, 123.0 / 1080), include=True)
@@ -1946,6 +2115,7 @@ class CurrencyWars:
                 log.info("默认选择中间补给选项")
                 time.sleep(1)
             auto.click_element('确认', 'text', None, 10, crop=(1490.0 / 1920, 943.0 / 1080, 403.0 / 1920, 76.0 / 1080), include=True)
+            time.sleep(2)
 
     def check_return_home(self) -> bool:
         """
