@@ -61,14 +61,23 @@ def parse_args():
         action="store_true",
         help="不隐藏控制台窗口，显示命令行输出（仅 Windows）"
     )
+    optional.add_argument(
+        "--start-minimized-to-tray",
+        action="store_true",
+        help="启动后最小化到托盘"
+    )
 
     args = parser.parse_args()
 
     # 处理 --list 参数
     if args.list:
+        from module.localization import load_language
+        from utils.tasks import task_display_names
+
+        load_language()
         print("\n可用的任务列表:")
         print("-" * 40)
-        for task_id, task_name in AVAILABLE_TASKS.items():
+        for task_id, task_name in task_display_names().items():
             print(f"  {task_id:<20} {task_name}")
         print("-" * 40)
         print("\n使用示例:")
@@ -88,10 +97,10 @@ if not args.no_silent:
     hide_console()
 
 if sys.platform == 'win32':
-    import pyuac
-    if not pyuac.isUserAdmin():
+    from utils.admin import is_user_admin, run_as_admin
+    if not is_user_admin():
         try:
-            pyuac.runAsAdmin(False)
+            run_as_admin()
             sys.exit(0)
         except Exception:
             sys.exit(1)
@@ -210,10 +219,13 @@ if __name__ == "__main__":
     # 设置应用属性，必须在创建 QApplication 之前调用
     QApplication.setAttribute(Qt.AA_DontCreateNativeWidgetSiblings)
 
-    # 避免用户环境中已有的 Qt 环境变量干扰打包后的 Qt 插件加载
+    # 避免用户环境变量干扰打包后的 Qt 和 OpenSSL 运行时
     if getattr(sys, 'frozen', False):
-        for _qt_key in ('QT_PLUGIN_PATH', 'QT_QPA_PLATFORM_PLUGIN_PATH', 'QML2_IMPORT_PATH', 'QT_QPA_FONTDIR'):
-            os.environ.pop(_qt_key, None)
+        for _runtime_key in (
+            'QT_PLUGIN_PATH', 'QT_QPA_PLATFORM_PLUGIN_PATH', 'QML2_IMPORT_PATH', 'QT_QPA_FONTDIR',
+            'SSLKEYLOGFILE', 'OPENSSL_CONF',
+        ):
+            os.environ.pop(_runtime_key, None)
 
     app = QApplication(sys.argv)
 
@@ -239,6 +251,7 @@ if __name__ == "__main__":
     try:
         from module.config import cfg
         from module.localization import load_language, detect_lang
+        from app.common.translator import create_fluent_translator
         ui_language = cfg.get_value("ui_language", "zh_CN")
 
         if ui_language == "auto":
@@ -247,16 +260,7 @@ if __name__ == "__main__":
         cfg.ui_language_now = ui_language
 
         # 创建翻译器实例，生命周期必须和 app 相同
-        if ui_language == "zh_TW":
-            translator = FluentTranslator(QLocale(QLocale.Language.Chinese, QLocale.Country.Taiwan))
-        elif ui_language == "ja_JP":
-            translator = FluentTranslator(QLocale(QLocale.Language.Japanese, QLocale.Country.Japan))
-        elif ui_language == "ko_KR":
-            translator = FluentTranslator(QLocale(QLocale.Language.Korean, QLocale.Country.SouthKorea))
-        elif ui_language == "en_US":
-            translator = FluentTranslator(QLocale(QLocale.Language.English, QLocale.Country.UnitedStates))
-        else:  # 默认使用中文
-            translator = FluentTranslator(QLocale(QLocale.Language.Chinese, QLocale.Country.China))
+        translator = create_fluent_translator(ui_language)
 
         load_language(ui_language)
     except Exception:
@@ -269,7 +273,11 @@ if __name__ == "__main__":
 
     # 传递任务参数给主窗口
     from app.main_window import MainWindow
-    w = MainWindow(task=args.task, exit_on_complete=args.exit)
+    w = MainWindow(
+        task=args.task,
+        exit_on_complete=args.exit,
+        start_minimized_to_tray=args.start_minimized_to_tray,
+    )
 
     # 注册主窗口并处理启动期间收到的挂起消息
     _main_window = w

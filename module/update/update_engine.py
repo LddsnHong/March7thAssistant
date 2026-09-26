@@ -189,19 +189,19 @@ class UpdateEngine:
 
         返回下载 URL 如果有新版本；返回 None 如果已是最新。
         """
-        self._log("info", tr("开始检测更新"))
+        self._log("info", "开始检测更新")
         try:
             info = check_for_update(source, cdk, prerelease, full)
         except Exception as e:
-            self._log("error", f"{tr('检测更新失败')}: {e}")
+            self._log("error", f"检测更新失败: {e}")
             raise UpdateError(tr("检测更新失败")) from e
 
         if info is None:
-            self._log("info", tr("当前已是最新版本"))
+            self._log("info", "当前已是最新版本")
             return None
 
         self.set_update_info(info)
-        self._log("info", f"{tr('发现新版本')}: {info.version} ({info.source})")
+        self._log("info", f"发现新版本: {info.version} ({info.source})")
         return info.url
 
     # ── 进度与日志 ───────────────────────────────────────────────────
@@ -299,7 +299,7 @@ class UpdateEngine:
     def terminate_processes(self):
         """终止所有相关进程。"""
         self._emit_progress(UpdateStage.TERMINATE, tr("正在关闭相关进程..."), indeterminate=True)
-        self._log("info", tr("开始终止相关进程"))
+        self._log("info", "开始终止相关进程")
         count = 0
         for proc in psutil.process_iter(attrs=["pid", "name"]):
             self._check_cancelled()
@@ -321,7 +321,7 @@ class UpdateEngine:
             return True
 
         self._emit_progress(UpdateStage.PREPARE, tr("正在等待主程序退出..."), indeterminate=True)
-        self._log("info", f"{tr('正在等待主程序退出...')} PID={pid}")
+        self._log("info", f"正在等待主程序退出... PID={pid}")
 
         try:
             process = psutil.Process(pid)
@@ -339,7 +339,7 @@ class UpdateEngine:
             except psutil.NoSuchProcess:
                 return True
 
-        self._log("warning", tr("等待主程序退出超时，尝试继续处理"))
+        self._log("warning", "等待主程序退出超时，尝试继续处理")
         return False
 
     # ── 覆盖安装 ─────────────────────────────────────────────────────
@@ -348,7 +348,7 @@ class UpdateEngine:
         """将解压后的文件覆盖到应用目录。"""
         self._check_cancelled()
         self._emit_progress(UpdateStage.COVER, tr("正在检测文件占用..."), indeterminate=True)
-        self._log("info", tr("开始覆盖安装"))
+        self._log("info", "开始覆盖安装")
 
         files = self._get_files_to_overwrite()
         self._log("debug", f"需要覆盖 {len(files)} 个文件")
@@ -364,7 +364,7 @@ class UpdateEngine:
             )
 
         if not files:
-            self._log("info", f"{tr('覆盖完成')}: {self.cover_folder_path}")
+            self._log("info", f"覆盖完成: {self.cover_folder_path}")
             return
 
         self._emit_progress(UpdateStage.COVER, tr("正在覆盖安装新版本..."), 0, len(files))
@@ -394,7 +394,7 @@ class UpdateEngine:
         # 再覆盖自身文件
         completed = self._overwrite_files(self_items, completed, len(files), created_dirs)
 
-        self._log("info", f"{tr('覆盖完成')}: {self.cover_folder_path}")
+        self._log("info", f"覆盖完成: {self.cover_folder_path}")
 
     # ── 清理 ─────────────────────────────────────────────────────────
 
@@ -410,26 +410,30 @@ class UpdateEngine:
             self._check_cancelled()
             self._remove_cleanup_tree(self.extract_folder_path)
 
-        self._log("info", tr("清理临时文件完成"))
+        self._log("info", "清理临时文件完成")
 
     # ── 启动应用 ─────────────────────────────────────────────────────
 
-    def launch_application(self):
+    def launch_application(self, start_minimized_to_tray: bool = False):
         """启动新版本的 March7th Launcher。"""
         self._check_cancelled()
         self._emit_progress(UpdateStage.LAUNCH, tr("正在启动新版本..."), indeterminate=True)
 
         launcher = os.path.abspath("./March7th Launcher.exe")
         env = build_independent_process_env()
+        command = [launcher]
+        if start_minimized_to_tray:
+            command.append("--start-minimized-to-tray")
+
         try:
             subprocess.Popen(
-                [launcher],
+                command,
                 creationflags=getattr(subprocess, "DETACHED_PROCESS", 0),
                 env=env,
                 close_fds=True,
             )
         except Exception:
-            subprocess.Popen([launcher], env=env, close_fds=True)
+            subprocess.Popen(command, env=env, close_fds=True)
 
         self._cleanup_self_backup()
         self._emit_progress(UpdateStage.DONE, tr("更新完成"), 1, 1)
@@ -452,7 +456,7 @@ class UpdateEngine:
         self.extract_file()
         return True
 
-    def finalize_update(self, wait_pid: int | None = None):
+    def finalize_update(self, wait_pid: int | None = None, start_minimized_to_tray: bool = False):
         """最终安装：等待退出 → 终止进程 → 覆盖 → 清理 → 启动。"""
         self._log("info", "开始最终化更新")
         self._require_package(require_download_url=False)
@@ -460,14 +464,17 @@ class UpdateEngine:
         self.terminate_processes()
         self.cover_folder()
         self.cleanup()
-        self.launch_application()
+        self.launch_application(start_minimized_to_tray=start_minimized_to_tray)
 
-    def run_full_update(self, wait_pid: int | None = None) -> bool:
+    def run_full_update(self, wait_pid: int | None = None, start_minimized_to_tray: bool = False) -> bool:
         """完整更新流程。"""
         self._log("info", "开始完整更新流程")
         if not self.prepare_update():
             return False
-        self.finalize_update(wait_pid=wait_pid)
+        self.finalize_update(
+            wait_pid=wait_pid,
+            start_minimized_to_tray=start_minimized_to_tray,
+        )
         return True
 
     # ── 内部辅助 ─────────────────────────────────────────────────────
@@ -652,14 +659,14 @@ class UpdateEngine:
             try:
                 os.remove(backup)
             except Exception:
-                self._log("error", f"{tr('无法删除旧的备份文件')}: {backup}")
+                self._log("error", f"无法删除旧的备份文件: {backup}")
                 return False
         try:
             os.replace(self_path, backup)
             self.self_backup_path = backup
             return True
         except Exception as e:
-            self._log("error", f"{tr('重命名自身失败')}: {e}")
+            self._log("error", f"重命名自身失败: {e}")
             return False
 
     def _cleanup_self_backup(self):

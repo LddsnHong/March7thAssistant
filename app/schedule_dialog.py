@@ -9,6 +9,7 @@ from qfluentwidgets import LineEdit, ComboBox, CheckBox, SpinBox
 from qfluentwidgets import InfoBar, InfoBarPosition
 from qfluentwidgets import FluentIcon as FIF
 from utils.tasks import TASK_NAMES
+from module.workflow import load_workflows
 import uuid
 import os
 import json
@@ -129,10 +130,10 @@ class AddEditScheduleDialog(MessageBox):
         # 默认时间设置为 04:00
         self.time_picker.setTime(QTime(4, 0))
 
-        # 程序类型（'本体' 表示启动程序自身，'外部程序' 表示选择可执行文件）
+        # 程序类型（本体、流程编排或外部程序）
         self.program_type_combo = ComboBox(self)
-        # 程序类型：本体、外部程序，以及来自配置的特殊程序
-        items = [tr('本体'), tr('外部程序')]
+        # 程序类型：本体、流程编排、外部程序，以及来自配置的特殊程序
+        items = [tr('本体'), tr('流程编排'), tr('外部程序')]
         for sp in SPECIAL_PROGRAMS:
             # display_name 可能包含空格等，本地化时使用 tr(display_name)
             items.append(tr(sp.get('display_name')))
@@ -154,15 +155,21 @@ class AddEditScheduleDialog(MessageBox):
         self.args_edit = LineEdit(self)
         self.args_edit.setPlaceholderText(tr("外部程序启动参数（可选）"))
         self.args_combo = ComboBox(self)
-        # 使用中文显示任务名称，但保存时保留对应的任务ID
+        # 显示本地化任务名，但保存时保留对应的任务ID（TASK_NAMES 存的是中文原文）
         # 保持 TASK_NAMES 的原始顺序（插入顺序）
         task_items = list(TASK_NAMES.items())
         self._task_keys = [k for k, v in task_items]
-        self._task_labels = [v for k, v in task_items]
+        self._task_labels = [tr(v) for k, v in task_items]
         self.args_combo.addItems(self._task_labels)
         self.args_combo.setVisible(True)
         # 当用户选择内置任务时，自动填写任务名称（仅在用户操作时触发）
         self.args_combo.activated.connect(self._on_args_activated)
+
+        self.workflow_combo = ComboBox(self)
+        self.workflow_names = [workflow.get('name', '') for workflow in load_workflows() if workflow.get('name')]
+        self.workflow_combo.addItems(self.workflow_names)
+        self.workflow_combo.setVisible(False)
+        self.workflow_combo.activated.connect(self._on_workflow_activated)
 
         # 超时强制停止，默认60分钟，单位分钟
         self.timeout_spin = SpinBox(self)
@@ -228,7 +235,7 @@ class AddEditScheduleDialog(MessageBox):
         top_row = QHBoxLayout()
         top_row.addWidget(self.enable_check)
         top_row.addStretch()
-        mode_label = BodyLabel(tr('启动方式:'))
+        mode_label = BodyLabel(tr('启动方式：'))
         mode_label.setFixedWidth(90)
         top_row.addWidget(mode_label)
         top_row.addWidget(self.trigger_mode_combo)
@@ -237,12 +244,12 @@ class AddEditScheduleDialog(MessageBox):
 
         # 名称与时间同一行
         row = QHBoxLayout()
-        label = BodyLabel(tr("任务名称:"))
+        label = BodyLabel(tr("任务名称："))
         label.setFixedWidth(label_width)
         row.addWidget(label)
         row.addWidget(self.name_edit, 1)
         # 时间放在同一行的右侧
-        self.time_label = BodyLabel(tr("启动时间:"))
+        self.time_label = BodyLabel(tr("启动时间："))
         self.time_label.setFixedWidth(90)
         row.addWidget(self.time_label)
         row.addWidget(self.time_picker)
@@ -250,7 +257,7 @@ class AddEditScheduleDialog(MessageBox):
 
         # 程序路径行
         row = QHBoxLayout()
-        label = BodyLabel(tr("程序路径:"))
+        label = BodyLabel(tr("程序路径："))
         label.setFixedWidth(label_width)
         row.addWidget(label)
         row.addLayout(prog_layout)
@@ -258,16 +265,17 @@ class AddEditScheduleDialog(MessageBox):
 
         # 启动参数 / 任务行（使用可变 label，随程序类型切换）
         row = QHBoxLayout()
-        self.args_label = BodyLabel(tr("启动参数 或 选择任务:"))
+        self.args_label = BodyLabel(tr("启动参数 或 选择任务："))
         self.args_label.setFixedWidth(label_width)
         row.addWidget(self.args_label)
         row.addWidget(self.args_edit)
         row.addWidget(self.args_combo)
+        row.addWidget(self.workflow_combo)
         form.addLayout(row)
 
         # 超时与任务完成后操作同一行
         row = QHBoxLayout()
-        label = BodyLabel(tr("超时强制停止:"))
+        label = BodyLabel(tr("超时强制停止："))
         label.setFixedWidth(label_width)
         row.addWidget(label)
         row.addWidget(self.timeout_spin)
@@ -275,7 +283,7 @@ class AddEditScheduleDialog(MessageBox):
         spacer = QLabel("")
         spacer.setFixedWidth(16)
         row.addWidget(spacer)
-        post_label = BodyLabel(tr("任务完成后操作:"))
+        post_label = BodyLabel(tr("任务完成后操作："))
         post_label.setFixedWidth(120)
         row.addWidget(post_label)
         row.addWidget(self.post_action_combo)
@@ -283,17 +291,17 @@ class AddEditScheduleDialog(MessageBox):
 
         # 完成后终止进程（可填写多个，逗号分隔）
         row = QHBoxLayout()
-        label = BodyLabel(tr("完成后终止进程:"))
+        label = BodyLabel(tr("完成后终止进程："))
         label.setFixedWidth(label_width)
         self.kill_processes_edit = LineEdit(self)
-        self.kill_processes_edit.setPlaceholderText(tr("例如: StarRail.exe, YuanShen.exe（逗号分隔多个进程）"))
+        self.kill_processes_edit.setPlaceholderText(tr("例如：StarRail.exe, YuanShen.exe（逗号分隔多个进程）"))
         row.addWidget(label)
         row.addWidget(self.kill_processes_edit)
         form.addLayout(row)
 
         # 完成后推送通知（左对齐）
         row = QHBoxLayout()
-        label = BodyLabel(tr("完成后推送通知:"))
+        label = BodyLabel(tr("完成后推送通知："))
         label.setFixedWidth(label_width)
         row.addWidget(label)
         row.addWidget(self.notify_check)
@@ -343,7 +351,14 @@ class AddEditScheduleDialog(MessageBox):
         # 程序路径不能为空（非本体类型都要求路径）
         if self.program_type_combo.currentText() != tr('本体'):
             prog = self.program_path_edit.text().strip()
-            if not prog:
+            if self.program_type_combo.currentText() == tr('流程编排'):
+                if not self.workflow_combo.currentText().strip():
+                    m = MessageBox(tr('错误'), tr('请选择要运行的流程编排'), self)
+                    m.cancelButton.hide()
+                    m.yesButton.setText(tr('确认'))
+                    m.exec()
+                    return
+            elif not prog:
                 m = MessageBox(tr('错误'), tr('程序路径不能为空'), self)
                 m.cancelButton.hide()
                 m.yesButton.setText(tr('确认'))
@@ -403,9 +418,20 @@ class AddEditScheduleDialog(MessageBox):
             self.prog_btn.setVisible(False)
             self.args_edit.setVisible(False)
             self.args_combo.setVisible(True)
+            self.workflow_combo.setVisible(False)
             # 更新标签为任务选择
             try:
-                self.args_label.setText(tr('选择任务:'))
+                self.args_label.setText(tr('选择任务：'))
+            except Exception:
+                pass
+        elif text == tr('流程编排'):
+            self.program_path_edit.setVisible(False)
+            self.prog_btn.setVisible(False)
+            self.args_edit.setVisible(False)
+            self.args_combo.setVisible(False)
+            self.workflow_combo.setVisible(True)
+            try:
+                self.args_label.setText(tr('选择流程：'))
             except Exception:
                 pass
         elif text == tr('外部程序'):
@@ -413,9 +439,10 @@ class AddEditScheduleDialog(MessageBox):
             self.prog_btn.setVisible(True)
             self.args_edit.setVisible(True)
             self.args_combo.setVisible(False)
+            self.workflow_combo.setVisible(False)
             # 更新标签为启动参数
             try:
-                self.args_label.setText(tr('启动参数:'))
+                self.args_label.setText(tr('启动参数：'))
                 self.program_path_edit.setPlaceholderText(tr('外部程序或脚本的完整路径'))
             except Exception:
                 pass
@@ -431,11 +458,12 @@ class AddEditScheduleDialog(MessageBox):
                 self.prog_btn.setVisible(True)
                 self.args_edit.setVisible(True)
                 self.args_combo.setVisible(False)
+                self.workflow_combo.setVisible(False)
                 try:
-                    self.args_label.setText(tr('启动参数:'))
+                    self.args_label.setText(tr('启动参数：'))
                     # 显示可执行文件示例作为 placeholder
                     exe = found.get('executable', '')
-                    self.program_path_edit.setPlaceholderText(tr("{} 的完整路径").format(exe))
+                    self.program_path_edit.setPlaceholderText(tr("{exe} 的完整路径").format(exe=exe))
                 except Exception:
                     pass
             else:
@@ -445,7 +473,7 @@ class AddEditScheduleDialog(MessageBox):
                 self.args_edit.setVisible(True)
                 self.args_combo.setVisible(False)
                 try:
-                    self.args_label.setText(tr('启动参数:'))
+                    self.args_label.setText(tr('启动参数：'))
                 except Exception:
                     pass
 
@@ -455,11 +483,13 @@ class AddEditScheduleDialog(MessageBox):
             text = self.program_type_combo.itemText(index)
         except Exception:
             text = self.program_type_combo.currentText()
-        # 本体/外部程序 手动选择 -> 清空名称与 args（让用户填写）
-        if text == tr('本体') or text == tr('外部程序'):
+        # 本体/流程编排/外部程序手动选择 -> 清空名称与参数（让用户填写）
+        if text == tr('本体') or text == tr('流程编排') or text == tr('外部程序'):
             self.name_edit.setText('')
             self.args_edit.setText('')
             self.kill_processes_edit.setText('')
+            if text == tr('流程编排') and self.workflow_combo.count() > 0:
+                self._on_workflow_activated(self.workflow_combo.currentIndex())
             return
         # 特殊程序：查找配置并应用 short_name 与默认 args（仅当 args 为空时）
         for sp in SPECIAL_PROGRAMS:
@@ -486,6 +516,14 @@ class AddEditScheduleDialog(MessageBox):
         # 直接设置名称以反映当前选中的内置任务
         self.name_edit.setText(label)
 
+    def _on_workflow_activated(self, index):
+        try:
+            name = self.workflow_combo.itemText(index)
+        except Exception:
+            name = self.workflow_combo.currentText()
+        if name:
+            self.name_edit.setText(f"{tr('流程编排')} - {name}")
+
     def _load_task(self, task):
         self._set_trigger_mode(str(task.get('trigger_mode', 'time')).lower())
         self.name_edit.setText(task.get('name', ''))
@@ -508,6 +546,12 @@ class AddEditScheduleDialog(MessageBox):
                 except ValueError:
                     idx = 0
             self.args_combo.setCurrentIndex(idx)
+        elif isinstance(prog, str) and prog.strip().lower() == 'workflow':
+            self.program_type_combo.setCurrentText(tr('流程编排'))
+            workflow_name = task.get('workflow_name') or task.get('args', '')
+            if workflow_name in self.workflow_names:
+                self.workflow_combo.setCurrentIndex(self.workflow_names.index(workflow_name))
+            self.name_edit.setText(task.get('name') or f"{tr('流程编排')} - {workflow_name}")
         else:
             # 外部程序或特定外部类型
             self.program_path_edit.setText(str(prog))
@@ -567,11 +611,17 @@ class AddEditScheduleDialog(MessageBox):
         task['time'] = self.time_picker.time.toString('HH:mm')
 
         # 根据程序类型保存 program 字段：'self' 或 外部程序路径
-        if self.program_type_combo.currentText() == tr('本体'):
+        program_type = self.program_type_combo.currentText()
+        if program_type == tr('本体'):
             task['program'] = 'self'
             # args 保存为任务 id（key）而不是中文 label
             idx = self.args_combo.currentIndex() if self.args_combo.count() > 0 else 0
             task['args'] = self._task_keys[idx] if idx >= 0 and idx < len(self._task_keys) else 'main'
+        elif program_type == tr('流程编排'):
+            task['program'] = 'workflow'
+            workflow_name = self.workflow_combo.currentText().strip()
+            task['args'] = workflow_name
+            task['workflow_name'] = workflow_name
         else:
             task['program'] = self.program_path_edit.text().strip() or ''
             task['args'] = self.args_edit.text().strip()
@@ -655,7 +705,7 @@ class ScheduleManagerDialog(MessageBox):
         btn_layout.addWidget(self.run_btn)
 
         # 冲突处理：当定时任务触发且已有任务在运行时如何处理（skip/stop）
-        conflict_label = BodyLabel(tr('冲突:'))
+        conflict_label = BodyLabel(tr('冲突：'))
         # conflict_label.setFixedWidth(90)
         self.conflict_combo = ComboBox(self)
         # options: key, label
@@ -677,7 +727,7 @@ class ScheduleManagerDialog(MessageBox):
         except Exception:
             pass
 
-        chain_failure_label = BodyLabel(tr('链式失败后:'))
+        chain_failure_label = BodyLabel(tr('链式失败后：'))
         self.chain_failure_combo = ComboBox(self)
         self._chain_failure_options = [
             (True, tr('继续后续任务')),
@@ -758,10 +808,13 @@ class ScheduleManagerDialog(MessageBox):
             time_display = t.get('time', '') if trigger_mode == 'time' else tr('链式启动')
             time_item = QTableWidgetItem(time_display)
             self.table.setItem(i, 2, time_item)
-            # 程序（本体显示“本体”，否则显示路径或文件名）
+            # 程序（本体、流程编排显示类型，否则显示路径或文件名）
             prog = t.get('program', '')
             if prog == 'self':
                 prog_display = tr('本体')
+                prog_item = QTableWidgetItem(prog_display)
+            elif prog == 'workflow':
+                prog_display = tr('流程编排')
                 prog_item = QTableWidgetItem(prog_display)
             else:
                 prog_str = str(prog)
@@ -777,7 +830,9 @@ class ScheduleManagerDialog(MessageBox):
             # 参数/任务（如果是本体，显示本地化任务名）
             args = t.get('args', '')
             if prog == 'self':
-                args_display = TASK_NAMES.get(args, args)
+                args_display = tr(TASK_NAMES.get(args, args))
+            elif prog == 'workflow':
+                args_display = t.get('workflow_name') or args
             else:
                 args_display = args
             args_item = QTableWidgetItem(args_display)
@@ -931,7 +986,7 @@ class ScheduleManagerDialog(MessageBox):
             return
         t = self.scheduled_tasks[row]
         # 确认
-        m = MessageBox(tr('确认'), tr('确认立即运行任务 "{}" 吗？').format(t.get("name", "")), self)
+        m = MessageBox(tr('确认'), tr('确认立即运行任务 "{name}" 吗？').format(name=t.get("name", "")), self)
         m.yesButton.setText(tr('确认'))
         m.cancelButton.setText(tr('取消'))
         if not m.exec():
@@ -969,7 +1024,7 @@ class ScheduleManagerDialog(MessageBox):
                 info.yesButton.setText(tr('确认'))
                 info.exec()
         except Exception as e:
-            m = MessageBox(tr('错误'), tr('启动任务失败: {}').format(e), self)
+            m = MessageBox(tr('错误'), tr('启动任务失败：{error}').format(error=e), self)
             m.cancelButton.hide()
             m.yesButton.setText(tr('确认'))
             m.exec()
